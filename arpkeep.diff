@@ -1,0 +1,77 @@
+Index: sys/netinet/if_ether.c
+===================================================================
+RCS file: /cvs/src/sys/netinet/if_ether.c,v
+retrieving revision 1.160
+diff -u -p -r1.160 if_ether.c
+--- sys/netinet/if_ether.c	17 Aug 2015 09:58:10 -0000	1.160
++++ sys/netinet/if_ether.c	19 Aug 2015 08:46:50 -0000
+@@ -87,9 +87,9 @@ struct llinfo_arp {
+ #define LA_HOLD_TOTAL 100
+ 
+ /* timer values */
+-int	arpt_prune = (5*60*1);	/* walk list every 5 minutes */
+-int	arpt_keep = (20*60);	/* once resolved, good for 20 more minutes */
+-int	arpt_down = 20;		/* once declared down, don't send for 20 secs */
++int		arpt_prune = (5*60*1);	/* walk list every 5 minutes */
++extern int	arpt_keep;
++int		arpt_down = 20;	/* once declared down, don't send for 20 secs */
+ 
+ void arptfree(struct llinfo_arp *);
+ void arptimer(void *);
+Index: sys/netinet/in.h
+===================================================================
+RCS file: /cvs/src/sys/netinet/in.h,v
+retrieving revision 1.114
+diff -u -p -r1.114 in.h
+--- sys/netinet/in.h	14 Apr 2015 12:22:15 -0000	1.114
++++ sys/netinet/in.h	19 Aug 2015 08:46:50 -0000
+@@ -681,7 +681,8 @@ struct ip_mreq {
+ #define	IPCTL_ARPQUEUED		36
+ #define	IPCTL_MRTMFC		37
+ #define	IPCTL_MRTVIF		38
+-#define	IPCTL_MAXID		39
++#define	IPCTL_ARPKEEP		39
++#define	IPCTL_MAXID		40
+ 
+ #define	IPCTL_NAMES { \
+ 	{ 0, 0 }, \
+@@ -723,6 +724,7 @@ struct ip_mreq {
+ 	{ "arpqueued", CTLTYPE_INT }, \
+ 	{ "mrtmfc", CTLTYPE_STRUCT }, \
+ 	{ "mrtvif", CTLTYPE_STRUCT }, \
++	{ "arpkeep", CTLTYPE_INT }, \
+ }
+ #define	IPCTL_VARS { \
+ 	NULL, \
+@@ -764,6 +766,7 @@ struct ip_mreq {
+ 	&la_hold_total, \
+ 	NULL, \
+ 	NULL, \
++	&arpt_keep, \
+ }
+ 
+ #endif /* __BSD_VISIBLE */
+Index: sys/netinet/ip_input.c
+===================================================================
+RCS file: /cvs/src/sys/netinet/ip_input.c,v
+retrieving revision 1.252
+diff -u -p -r1.252 ip_input.c
+--- sys/netinet/ip_input.c	16 Jul 2015 21:14:21 -0000	1.252
++++ sys/netinet/ip_input.c	19 Aug 2015 08:46:51 -0000
+@@ -105,6 +105,7 @@ int	ip_defttl = IPDEFTTL;
+ int	ip_mtudisc = 1;
+ u_int	ip_mtudisc_timeout = IPMTUDISCTIMEOUT;
+ int	ip_directedbcast = 0;
++int	arpt_keep = (20 * 60);	/* timeout is 20min by default */
+ 
+ struct rttimer_queue *ip_mtudisc_timeout_q = NULL;
+ 
+@@ -1638,6 +1639,8 @@ ip_sysctl(int *name, u_int namelen, void
+ 	case IPCTL_MRTVIF:
+ 		return (EOPNOTSUPP);
+ #endif
++	case IPCTL_ARPKEEP:
++		return (sysctl_int(oldp, oldlenp, newp, newlen, &arpt_keep));
+ 	default:
+ 		if (name[0] < IPCTL_MAXID)
+ 			return (sysctl_int_arr(ipctl_vars, name, namelen,
